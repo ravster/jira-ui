@@ -4,29 +4,26 @@ set subdomain [gets $cred_file]
 close $cred_file
 
 # Yes, I'm using globals.  Deal with it.
-set id ""
+set prompt ""
 set issue ""
 
 # Usage: issue abc-234
 proc issue {str} {
-    global ::id
-    set id $str
-    set ::issue [exec curl -sSL -u $::creds "https://$::subdomain.atlassian.net/rest/api/latest/issue/$id"]
+    global ::issue ::prompt
+    set issue [exec curl -sSL -u $::creds "https://$::subdomain.atlassian.net/rest/api/latest/issue/$str"]
+    set summary [exec jq {.fields.summary} << $issue]
+    set prompt "$str: $summary"
 }
 
 proc description {} {
-    set a1 [exec jq -r {[.fields.description] | @tsv} << $::issue]
-
-    puts $a1
+    puts [exec jq -r {[.fields.description] | @tsv} << $::issue]
 }
 proc d {} {
     description
 }
 
-# puts "Enter ticket id"
-# set id [gets stdin]
 while {1} {
-    puts "$id >"
+    puts "$prompt >"
     set input [gets stdin]
     eval $input
 }
