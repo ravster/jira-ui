@@ -1,0 +1,20 @@
+Jira UI
+
+This project aims to allow a user to use JIRA cloud with an interface that is basic and simple.  The impetus for this project is the absolutely obnoxious amount of resources used by the JIRA website.  Even the official JIRA app for Android is grossly overweight, coming in at a supremely obnoxious 25MB download.
+
+The functionality I make for this will be built off of my usage of Jira.  I don't do a whole lot more than view tickets, edit descriptions, link tickets, and add comments.  JIRA is just an overgrown TODO-list, let's not make it any bigger than it has to be.
+
+I've never programmed in TCL before, so this is going to be a learning experience.  I've also never built a REPL-driven program before, so this is going to be different.
+
+If, at some point, I figure that I really want a GUI, I'll try to make a Tk adaptation of this.  Don't hold your breath for that one; I read about all the computation that goes into GUIs figuring out where to print stuff and I think it's excessive.  I firmly believe that the amount of thought and effort that goes into where to show stuff should not go past the amount of thought of how to do the stuff itself.
+
+Goals for this UI
+- Fast
+- Light (low CPU and RAM usage)
+
+Anti-goal
+- Pretty (if you want pretty, go somewhere else)
+
+Dependencies:
+- cURL https://curl.haxx.se/
+- jq https://stedolan.github.io/jq/
