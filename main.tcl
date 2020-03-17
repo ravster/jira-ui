@@ -17,7 +17,10 @@ proc si {str} {
 }
 
 proc description {} {
-    puts [exec jq -r {[.fields.description] | @tsv} << $::issue]
+    set d1 [exec jq -r {[.fields.description] | @tsv} << $::issue]
+    regsub -all {\\r\\n} $d1 "\n" d2
+    regsub -all {\\n} $d2 "\n" d3
+    puts $d3
 }
 proc d {} {
     description
