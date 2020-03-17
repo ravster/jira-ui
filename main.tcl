@@ -7,8 +7,9 @@ close $cred_file
 set prompt ""
 set issue ""
 
-# Usage: issue abc-234
-proc issue {str} {
+# Set issue
+# Usage: si abc-234
+proc si {str} {
     global ::issue ::prompt
     set issue [exec curl -sSL -u $::creds "https://$::subdomain.atlassian.net/rest/api/latest/issue/$str"]
     set summary [exec jq {.fields.summary} << $issue]
@@ -20,6 +21,17 @@ proc description {} {
 }
 proc d {} {
     description
+}
+
+# Print comments for current issue
+proc c {} {
+    global ::issue
+    set comments [exec jq -r {.fields.comment.comments[] | [.author.displayName, .body] | @tsv} << $issue ]
+    set lines [split $comments "\n"]
+    foreach line $lines {
+	puts $line
+	puts "-----"
+    }
 }
 
 while {1} {
