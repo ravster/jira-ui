@@ -6,14 +6,16 @@ close $cred_file
 # Yes, I'm using globals.  Deal with it.
 set prompt ""
 set issue ""
+set issue_id ""
 
 # Set issue
 # Usage: si abc-234
 proc si {str} {
-    global ::issue ::prompt
+    global ::issue ::prompt ::issue_id
     set issue [exec curl -sSL -u $::creds "https://$::subdomain.atlassian.net/rest/api/latest/issue/$str"]
     set summary [exec jq {.fields.summary} << $issue]
-    set prompt "$str: $summary"
+    set issue_id $str
+    set prompt "$issue_id: $summary"
 }
 
 proc description {} {
@@ -35,6 +37,16 @@ proc c {} {
 	puts $line
 	puts "-----"
     }
+}
+
+proc mc {} {
+    set a1 [gets stdin]
+    # TODO JSON-escape any double-quotes within the input.
+    set body "{\"body\":\"$a1\"}"
+    set fh [open temp w]
+    puts $fh $body
+    close $fh
+    exec curl -v -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/comment"
 }
 
 while {1} {
