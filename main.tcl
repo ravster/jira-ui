@@ -46,7 +46,15 @@ proc mc {} {
     set fh [open temp w]
     puts $fh $body
     close $fh
-    exec curl -v -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/comment"
+    exec -ignorestderr curl -sSLv -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/comment"
+}
+
+proc h {} {
+    puts "h - print this message"
+    puts "si - set issue"
+    puts "d - description"
+    puts "c - list comments"
+    puts "mc - make comment"
 }
 
 while {1} {
