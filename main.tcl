@@ -8,14 +8,19 @@ set prompt ""
 set issue ""
 set issue_id ""
 
-# Set issue
-# Usage: si abc-234
-proc si {str} {
+# Go to issue
+# Usage: g abc-234
+proc g {str} {
     global ::issue ::prompt ::issue_id
     set issue [exec curl -sSL -u $::creds "https://$::subdomain.atlassian.net/rest/api/latest/issue/$str"]
     set summary [exec jq {.fields.summary} << $issue]
     set issue_id $str
     set prompt "$issue_id: $summary"
+}
+
+# Refresh
+proc r {} {
+    g $::issue_id
 }
 
 proc description {} {
@@ -46,12 +51,13 @@ proc mc {} {
     set fh [open temp w]
     puts $fh $body
     close $fh
-    exec -ignorestderr curl -sSLv -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/comment"
+    exec -ignorestderr curl -sSL -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/comment"
 }
 
 proc h {} {
     puts "h - print this message"
-    puts "si - set issue"
+    puts "g - go to issue"
+    puts "r - refresh issue"
     puts "d - description"
     puts "c - list comments"
     puts "mc - make comment"
