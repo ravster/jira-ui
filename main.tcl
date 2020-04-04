@@ -1,3 +1,5 @@
+package require json
+
 set cred_file [open creds]
 set creds [gets $cred_file]
 set subdomain [gets $cred_file]
@@ -54,6 +56,37 @@ proc mc {} {
     exec -ignorestderr curl -sSL -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/comment"
 }
 
+# Assign issue to myself
+proc i {} {
+    set fh [ open temp w ]
+    puts $fh {{"name":"Ravi Desai"}}
+    close $fh
+    exec curl -X PUT -sSL -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/assignee"
+}
+
+proc unassign {} {
+    set fh [ open temp w ]
+    puts $fh {{"name": null}}
+    close $fh
+    exec curl -X PUT -sSL -u $::creds -H content-type:application/json -d @temp "https://$::subdomain.atlassian.net/rest/api/2/issue/$::issue_id/assignee"
+}
+
+proc s {str} {
+    puts "Searching for $str in text"
+    set results [exec curl -sSL -u $::creds "https://$::subdomain.atlassian.net/rest/api/2/search?jql=text~$str+and+status+!%3D+Done"]
+    puts "Results are $results"
+    set r1 [::json::json2dict $results]
+    set issues [dict get $r1 issues]
+    set i1 0
+    foreach i $issues {
+	set key [dict get $i key]
+	set summary [dict get $i fields summary]
+	puts "$key : $summary"
+	incr i1
+    }
+    puts "Found $i1 results"
+}
+
 proc h {} {
     puts "h - print this message"
     puts "g - go to issue"
@@ -61,6 +94,8 @@ proc h {} {
     puts "d - description"
     puts "c - list comments"
     puts "mc - make comment"
+    puts "s - search text in non-done issues"
+    puts "unassign"
 }
 
 while {1} {
