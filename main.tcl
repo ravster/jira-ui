@@ -1,4 +1,5 @@
 package require json
+package require json::write
 
 set cred_file [open creds]
 set creds [gets $cred_file]
@@ -73,16 +74,20 @@ proc unassign {} {
 
 proc s {str} {
     puts "Searching for $str in text"
-    set results [exec curl -sSL -u $::creds "https://$::subdomain.atlassian.net/rest/api/2/search?jql=text~$str+and+status+!%3D+Done"]
-    puts "Results are $results"
+    set body [::json::write object jql "\"text ~ '$str' and status = Done\""]
+    puts $body
+    set fh [open temp w]
+    puts $fh $body
+    close $fh
+    set results [exec curl -sSL -H "Content-Type:application/json" -d @temp -u $::creds "https://$::subdomain.atlassian.net/rest/api/2/search"]
     set r1 [::json::json2dict $results]
     set issues [dict get $r1 issues]
     set i1 0
     foreach i $issues {
-	set key [dict get $i key]
-	set summary [dict get $i fields summary]
-	puts "$key : $summary"
-	incr i1
+    	set key [dict get $i key]
+    	set summary [dict get $i fields summary]
+    	puts "$key : $summary"
+    	incr i1
     }
     puts "Found $i1 results"
 }
