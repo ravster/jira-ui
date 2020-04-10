@@ -1,7 +1,10 @@
+// gcc -o jira -I/usr/include/x86_64-linux-gnu jira.c -lcurl -ljansson
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <curl/curl.h>
+#include <jansson.h>
 
 struct incoming_bytes {
   char *memory;
@@ -15,6 +18,7 @@ char* get_command() {
   char* line = NULL;
   size_t len;
 
+  printf("> ");
   getline(&line, &len, stdin);
   printf("We just got\n%s", line);
   return line;
@@ -61,6 +65,21 @@ size_t save_response(void *body, size_t size, size_t num, void *store) {
   return total;
 }
 
+char *get_description(char *json) {
+  json_t *root;
+  json_error_t error;
+
+  root = json_loads(json, 0, &error);
+  if(!root) {
+    fprintf(stderr, "Can't parse json: Line %d : %s\n", error.line, error.text);
+    return "FAIL on json-parse";
+  }
+
+  json_t *fields = json_object_get(root, "fields");
+  json_t *summary = json_object_get(fields, "summary");
+  json_string_value(summary);
+}
+
 void get_issue(char *issue_id) {
   CURLcode res;
   char url[256];
@@ -78,7 +97,10 @@ void get_issue(char *issue_id) {
 	    curl_easy_strerror(res));
 
   printf("Size of get_issue = %lu bytes\n", response.size);
-  printf("Issue is %s\n", response.memory);
+
+  char *description = get_description(response.memory);
+  printf("Description is %s\n", description);
+
   free(response.memory);
   response.size = 0;
 }
