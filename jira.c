@@ -14,6 +14,9 @@ struct incoming_bytes {
 CURL *curl;
 char *subdomain;
 
+// Current issue.  Maybe make it a struct?
+char *description, *summary;
+
 char* get_command() {
   char* line = NULL;
   size_t len;
@@ -76,8 +79,10 @@ char *get_description(char *json) {
   }
 
   json_t *fields = json_object_get(root, "fields");
-  json_t *summary = json_object_get(fields, "summary");
-  json_string_value(summary);
+  json_t *d1 = json_object_get(fields, "description");
+  free(description);
+  description = strdup(json_string_value(d1));
+  return description;
 }
 
 void get_issue(char *issue_id) {
@@ -98,8 +103,7 @@ void get_issue(char *issue_id) {
 
   printf("Size of get_issue = %lu bytes\n", response.size);
 
-  char *description = get_description(response.memory);
-  printf("Description is %s\n", description);
+  get_description(response.memory);
 
   free(response.memory);
   response.size = 0;
@@ -118,6 +122,8 @@ void eval_command(char *in) {
     printf("getting issue %s\n", issue_id);
 
     get_issue(issue_id);
+  } else if (0 == strncmp("d", in, 1)) {
+    printf("Description:\n%s\n\n", description);
   }
 }
 
