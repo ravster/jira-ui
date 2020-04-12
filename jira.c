@@ -79,9 +79,19 @@ char *get_description(char *json) {
   }
 
   json_t *fields = json_object_get(root, "fields");
+
+  //Description
   json_t *d1 = json_object_get(fields, "description");
   free(description);
   description = strdup(json_string_value(d1));
+  json_decref(d1);
+
+  // Summary
+  d1 = json_object_get(fields, "summary");
+  free(summary);
+  summary = strdup(json_string_value(d1));
+  json_decref(d1);
+
   return description;
 }
 
@@ -124,6 +134,8 @@ void eval_command(char *in) {
     get_issue(issue_id);
   } else if (0 == strncmp("d", in, 1)) {
     printf("Description:\n%s\n\n", description);
+  } else if (0 == strncmp("s", in, 1)) {
+    printf("Summary:\n%s\n\n", summary);
   }
 }
 
