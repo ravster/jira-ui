@@ -15,7 +15,8 @@ CURL *curl;
 char *subdomain;
 
 // Current issue.  Maybe make it a struct?
-char *description, *summary;
+char *description, *summary, **g_comments;
+size_t g_comment_length;
 
 char* get_command() {
   char* line = NULL;
@@ -68,6 +69,36 @@ size_t save_response(void *body, size_t size, size_t num, void *store) {
   return total;
 }
 
+void extract_comments(json_t *fields) {
+  json_t *comment = json_object_get(fields, "comment");
+  json_t *comments = json_object_get(comment, "comments");
+  json_t *element;
+  size_t length = json_array_size(comments);
+  if (!length) {
+    fprintf(stderr, "Comments are not an array");
+    exit(4);
+  }
+
+  char **comments0 = malloc(2 * length * sizeof(char *));
+  for (int i = 0; i < length; i = i + 2) {
+    element = json_array_get(comments, i);
+    json_t *author = json_object_get(element, "author");
+    json_t *display_name = json_object_get(author, "displayName");
+    char *display_name1 = strdup(json_string_value(display_name));
+    json_t *body = json_object_get(element, "body");
+    char *body1 = strdup(json_string_value(body));
+
+    comments0[i] = display_name1;
+    comments0[i + 1] = body1;
+  }
+  free(g_comments);
+  g_comments = comments0;
+  g_comment_length = length;
+
+  json_decref(comments);
+  json_decref(comment);
+}
+
 char *get_description(char *json) {
   json_t *root;
   json_error_t error;
@@ -91,6 +122,8 @@ char *get_description(char *json) {
   free(summary);
   summary = strdup(json_string_value(d1));
   json_decref(d1);
+
+  extract_comments(fields);
 
   return description;
 }
@@ -119,6 +152,13 @@ void get_issue(char *issue_id) {
   response.size = 0;
 }
 
+void print_comments() {
+  printf("COMMENTS -----\n");
+  for (int i = 0; i < g_comment_length; i = i+2) {
+    printf("%s: %s\n", g_comments[i], g_comments[i + 1]);
+  }
+}
+
 void eval_command(char *in) {
   if (0 == strncmp("g ", in, 2)) {
     // If first 2 chars are "g ".
@@ -136,6 +176,8 @@ void eval_command(char *in) {
     printf("Description:\n%s\n\n", description);
   } else if (0 == strncmp("s", in, 1)) {
     printf("Summary:\n%s\n\n", summary);
+  } else if (0 == strncmp("c", in, 1)) {
+    print_comments();
   }
 }
 
