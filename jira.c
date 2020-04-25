@@ -8,7 +8,7 @@
 
 struct incoming_bytes {
   char *memory;
-  size_t size;
+  size_t length, capacity;
 };
 
 CURL *curl;
@@ -24,7 +24,6 @@ char* get_command() {
 
   printf("> ");
   getline(&line, &len, stdin);
-  printf("We just got\n%s", line);
   return line;
 }
 
@@ -51,20 +50,23 @@ void get_config(char** out) {
   out[1] = subdomain;
 }
 
-size_t save_response(void *body, size_t size, size_t num, void *store) {
+size_t append_incoming_bytes(void *body, size_t size, size_t num, void *store) {
   size_t total = size * num;
   struct incoming_bytes *store1 = store;
 
-  char *new_mem = realloc(store1->memory, store1->size + 1 + total);
-  if (new_mem == NULL) {
-    fprintf(stderr, "Couldn't get %lu bytes of memory for saving the response.\n", store1->size + 1 + total);
-    exit(3);
+  if (store1->length + total > store1->capacity) {
+    size_t new_capacity = (total * 2) + store1->capacity;
+    char *new_mem = realloc(store1->memory, new_capacity);
+    if (new_mem == NULL) {
+      fprintf(stderr, "Couldn't get %lu bytes of memory for saving the response.\n", new_capacity);
+      exit(3);
+    }
+    store1->memory = new_mem;
+    store1->capacity = new_capacity;
   }
 
-  store1->memory = new_mem;
-  memcpy(&(store1->memory[store1->size]), body, total);
-  store1->size += total;
-  store1->memory[store1->size] = 0;
+  strcat(store1->memory, body);
+  store1->length += total;
 
   return total;
 }
@@ -133,10 +135,12 @@ void get_issue(char *issue_id) {
   char url[256];
   snprintf(url, 256, "https://%s.atlassian.net/rest/api/latest/issue/%s", subdomain, issue_id);
   curl_easy_setopt(curl, CURLOPT_URL, url);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, save_response);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_incoming_bytes);
   struct incoming_bytes response;
-  response.memory = malloc(1);
-  response.size = 0;
+  response.memory = malloc(20480); // 20KB.  Each "g" call usually pulls in 11-12KB.
+  response.memory[0] = '\0'; // Set first char to '\0' so that it's a valid empty string.
+  response.length = 0;
+  response.capacity = 20479;
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
 
   res = curl_easy_perform(curl);
@@ -144,12 +148,12 @@ void get_issue(char *issue_id) {
     fprintf(stderr, "curl_easy_perform() failed: %s\n",
 	    curl_easy_strerror(res));
 
-  printf("Size of get_issue = %lu bytes\n", response.size);
+  printf("Size of get_issue = %lu bytes\n", response.length);
 
   get_description(response.memory);
 
   free(response.memory);
-  response.size = 0;
+  response.capacity = 0;
 }
 
 void print_comments() {
