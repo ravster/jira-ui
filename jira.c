@@ -5,11 +5,41 @@
 #include <string.h>
 #include <curl/curl.h>
 #include <jansson.h>
+#include <errno.h>
 
-struct incoming_bytes {
+// Growable string.
+// This could be in a seperate library.
+struct growable_string {
   char *memory;
   size_t length, capacity;
 };
+void growable_string_new(struct growable_string *out) {
+  size_t capacity = 20481;
+  char *data = malloc(capacity);
+  data[0] = '\0';
+
+  out->memory = data;
+  out->length = 0;
+  out->capacity = capacity;
+}
+int growable_string_append(struct growable_string *string, char *in, size_t new_amount) {
+  if (string->capacity < string->length + new_amount + 1) {
+    // grow string
+    size_t new_cap = (new_amount * 2) + string->capacity;
+    char *new_mem = realloc(string->memory, new_cap);
+    if (new_mem == NULL) {
+      fprintf(stderr, "Couldn't get %lu bytes of memory to grow a string.\n", new_cap);
+      exit(3);
+    }
+    string->memory = new_mem;
+    string->capacity = new_cap;
+  }
+
+  strncat(string->memory, in, new_amount);
+  string->length += new_amount;
+
+  return 1;
+}
 
 CURL *curl;
 char *subdomain;
@@ -19,11 +49,16 @@ char *description, *summary, **g_comments;
 size_t g_comment_length;
 
 char* get_command() {
-  char* line = NULL;
-  size_t len;
+  size_t len = 500;
+  char* line = malloc(len);
 
   printf("> ");
-  getline(&line, &len, stdin);
+  int ret = getline(&line, &len, stdin);
+  if (ret == -1) {
+    printf("GOT return value %d.  errno = %d. %s.\n", ret, errno, line);
+    perror("Can't read from stdin! wat?\n");
+    exit(errno);
+  }
   return line;
 }
 
@@ -50,9 +85,9 @@ void get_config(char** out) {
   out[1] = subdomain;
 }
 
-size_t append_incoming_bytes(void *body, size_t size, size_t num, void *store) {
+size_t append_growable_string(void *body, size_t size, size_t num, void *store) {
   size_t total = size * num;
-  struct incoming_bytes *store1 = store;
+  struct growable_string *store1 = store;
 
   if (store1->length + total > store1->capacity) {
     size_t new_capacity = (total * 2) + store1->capacity;
@@ -135,8 +170,8 @@ void get_issue(char *issue_id) {
   char url[256];
   snprintf(url, 256, "https://%s.atlassian.net/rest/api/latest/issue/%s", subdomain, issue_id);
   curl_easy_setopt(curl, CURLOPT_URL, url);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_incoming_bytes);
-  struct incoming_bytes response;
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_growable_string);
+  struct growable_string response;
   response.memory = malloc(20480); // 20KB.  Each "g" call usually pulls in 11-12KB.
   response.memory[0] = '\0'; // Set first char to '\0' so that it's a valid empty string.
   response.length = 0;
@@ -163,6 +198,35 @@ void print_comments() {
   }
 }
 
+void write_to_file(char *filename, char *body) {
+  FILE *f = fopen(filename, "w");
+
+  fwrite(body, strlen(body), 1, f);
+  fclose(f);
+}
+
+void write_comment() {
+  printf("Input your comment and end with 'eof' on a newline.\n");
+  char *line = NULL;
+  size_t len = 500, ret = 0;
+  struct growable_string string = {};
+  growable_string_new(&string);
+
+  while(1) {
+    line = malloc(len);
+    ret = getline(&line, &len, stdin);
+    if (0 == strncmp("eof", line, 3)) {
+      break;
+    }
+
+    growable_string_append(&string, line, ret);
+    free(line);
+  }
+
+  write_to_file("temp", string.memory); // This has to change to a JIRA API call.
+  free(string.memory);
+}
+
 void eval_command(char *in) {
   if (0 == strncmp("g ", in, 2)) {
     // If first 2 chars are "g ".
@@ -182,6 +246,10 @@ void eval_command(char *in) {
     printf("Summary:\n%s\n\n", summary);
   } else if (0 == strncmp("c", in, 1)) {
     print_comments();
+  } else if (0 == strncmp("mc", in, 2)) {
+    write_comment();
+  } else {
+    printf("Didn't understand command:%s:\n", in);
   }
 }
 
