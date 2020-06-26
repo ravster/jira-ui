@@ -24,6 +24,7 @@ def description():
     print(current_issue['fields']['description'])
 
 def summary():
+    print(current_issue['fields']['status']['name'])
     print(current_issue['fields']['summary'])
 
 def comments():
@@ -34,7 +35,7 @@ def comments():
         print('-----')
 
 def print_all():
-    print(current_issue)
+    print(json.dumps(current_issue, indent=2))
 
 def my_issues():
     body = {'jql': "assignee = 'Ravi' and status != Done order by updated asc"}
@@ -43,6 +44,7 @@ def my_issues():
     r1 = r.json()
     for issue in r1['issues']:
         print(f"{issue['key']}: {issue['fields']['status']['name']}: {issue['fields']['summary']}")
+    print("--- Newly updated issues are lower ---")
 
 def make_comment():
     print("Write your comment and end with a '.' on it's own line.")
@@ -59,6 +61,13 @@ def make_comment():
     r1 = r.json()
     print(r1)
 
+def print_transitions():
+    uri = f'https://{subdomain}.atlassian.net/rest/api/2/issue/{issue_id}/transitions'
+    r = requests.get(uri, auth=(basic_auth[0], basic_auth[1]))
+    r1 = r.json()
+    for t in r1['transitions']:
+        print(f"{t['id']}: {t['name']}")
+
 def read_command():
     c = input("> ")
     if c.startswith("g "):
@@ -69,6 +78,8 @@ def read_command():
         summary()
     elif c.startswith('c'):
         comments()
+    elif c.startswith('pt'):
+        print_transitions()
     elif c.startswith('p'):
         print_all()
     elif c.startswith('mine'):
