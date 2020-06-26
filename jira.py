@@ -68,6 +68,11 @@ def print_transitions():
     for t in r1['transitions']:
         print(f"{t['id']}: {t['name']}")
 
+def do_transition(id):
+    uri = f'https://{subdomain}.atlassian.net/rest/api/2/issue/{issue_id}/transitions'
+    r = requests.post(uri, auth=(basic_auth[0], basic_auth[1]), json={'transition': {'id': id}})
+    print(r.status_code)
+
 def read_command():
     c = input("> ")
     if c.startswith("g "):
@@ -86,6 +91,8 @@ def read_command():
         my_issues()
     elif c.startswith('m'):
         make_comment()
+    elif c.startswith('t'):
+        do_transition(c.split()[1])
     else:
         did_not_understand_command()
 
