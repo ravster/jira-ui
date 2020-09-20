@@ -12,6 +12,11 @@ current_issue = ""
 def did_not_understand_command():
     print("Sorry, we didn't understand that command.")
 
+def summary():
+    print(current_issue['fields']['status']['name'])
+    print(current_issue['fields']['summary'])
+    print(current_issue['fields']['description'])
+
 def goto_issue(id):
     uri = f'https://{subdomain}.atlassian.net/rest/api/latest/issue/{id}'
     r = requests.get(uri, auth=(basic_auth[0], basic_auth[1]))
@@ -19,13 +24,7 @@ def goto_issue(id):
     current_issue = r.json()
     global issue_id
     issue_id = id
-
-def description():
-    print(current_issue['fields']['description'])
-
-def summary():
-    print(current_issue['fields']['status']['name'])
-    print(current_issue['fields']['summary'])
+    summary()
 
 def comments():
     for comment in current_issue['fields']['comment']['comments']:
@@ -77,8 +76,6 @@ def read_command():
     c = input("> ")
     if c.startswith("g "):
         goto_issue(c.split()[1])
-    elif c.startswith("d"):
-        description()
     elif c.startswith("s"):
         summary()
     elif c.startswith('c'):
