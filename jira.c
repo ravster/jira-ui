@@ -22,7 +22,8 @@ void growable_string_new(struct growable_string *out) {
   out->length = 0;
   out->capacity = capacity;
 }
-int growable_string_append(struct growable_string *string, char *in, size_t new_amount) {
+
+int growable_string_append(struct growable_string *string, const char *in, size_t new_amount) {
   if (string->capacity < string->length + new_amount + 1) {
     // grow string
     size_t new_cap = (new_amount * 2) + string->capacity;
@@ -45,7 +46,7 @@ CURL *curl;
 char *subdomain;
 
 // Current issue.  Maybe make it a struct?
-char *description, *summary, **g_comments;
+char *description, *summary, **g_comments, *issue_id;
 size_t g_comment_length;
 
 char* get_command() {
@@ -106,14 +107,15 @@ size_t append_growable_string(void *body, size_t size, size_t num, void *store) 
   return total;
 }
 
-void extract_comments(json_t *fields) {
+int extract_comments(json_t *fields) {
+  free(g_comments); // OK, so this isn't enough, and we need to clean out comment-memory completely.
   json_t *comment = json_object_get(fields, "comment");
   json_t *comments = json_object_get(comment, "comments");
   json_t *element;
   size_t length = json_array_size(comments);
-  if (!length) {
-    fprintf(stderr, "Comments are not an array");
-    exit(4);
+  if (length == 0) {
+    fprintf(stderr, "Comments are not an array, or there are no comments.\n");
+    return 0;
   }
 
   char **comments0 = malloc(2 * length * sizeof(char *));
@@ -128,12 +130,13 @@ void extract_comments(json_t *fields) {
     comments0[i] = display_name1;
     comments0[i + 1] = body1;
   }
-  free(g_comments);
   g_comments = comments0;
   g_comment_length = length;
 
   json_decref(comments);
   json_decref(comment);
+
+  return 1;
 }
 
 char *get_description(char *json) {
@@ -165,11 +168,12 @@ char *get_description(char *json) {
   return description;
 }
 
-void get_issue(char *issue_id) {
+void get_issue() {
   CURLcode res;
   char url[256];
   snprintf(url, 256, "https://%s.atlassian.net/rest/api/latest/issue/%s", subdomain, issue_id);
   curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_growable_string);
   struct growable_string response;
   response.memory = malloc(20480); // 20KB.  Each "g" call usually pulls in 11-12KB.
@@ -205,6 +209,20 @@ void write_to_file(char *filename, char *body) {
   fclose(f);
 }
 
+void replace_string(struct growable_string *out, const char *in, char *pattern, char *replacement) {
+  char *in2 = strdup(in);
+  char *p = strtok(in2, pattern);
+  if (p == NULL) {
+    growable_string_append(out, in, out->length + strlen(in));
+    return;
+  }
+
+  do {
+    growable_string_append(out, p, out->length + strlen(p));
+    growable_string_append(out, replacement, out->length + strlen(replacement));
+  } while (p != NULL);
+}
+
 void write_comment() {
   printf("Input your comment and end with 'eof' on a newline.\n");
   char *line = NULL;
@@ -222,8 +240,44 @@ void write_comment() {
     growable_string_append(&string, line, ret);
     free(line);
   }
+  struct growable_string foo;
+  growable_string_new(&foo);
+  replace_string(&foo, string.memory, "\n", "\\n");
+  printf("foo is: %sNNN\n", foo.memory);
+  char body[foo.length + 20];
+  sprintf(body, "{\"body\":\"%s\"}", foo.memory);
+  printf("body is: %sNNN\n", body);
+  return;
 
-  write_to_file("temp", string.memory); // This has to change to a JIRA API call.
+  CURLcode res;
+  char url[256];
+  printf("in wc, issue-id is '%s'\n", issue_id);
+  snprintf(url, 256, "https://%s.atlassian.net/rest/api/2/issue/%s/comment", subdomain, issue_id);
+  printf("posting <%s> to %s\n", body, url);
+  curl_easy_setopt(curl, CURLOPT_URL, url);
+  curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
+  struct curl_slist *headers = NULL;
+  headers = curl_slist_append(headers, "Content-Type:application/json");
+  if (headers == NULL) {
+    fprintf(stderr, "Couldn't add content-type json when adding a comment");
+    free(string.memory);
+  }
+  curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
+
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_growable_string);
+  struct growable_string response;
+  growable_string_new(&response);
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+
+  char errbuf[CURL_ERROR_SIZE];
+  curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+  res = curl_easy_perform(curl);
+  printf("err %s, res = %d\n", errbuf, res);
+  if (res != CURLE_OK) {
+    fprintf(stderr, "Could not post comment: %s\n", curl_easy_strerror(res));
+  }
+  printf("Response is: %s\n", response.memory);
+
   free(string.memory);
 }
 
@@ -232,14 +286,17 @@ void eval_command(char *in) {
     // If first 2 chars are "g ".
     remove_trailing_newline(in);
     strtok(in, " "); // To get rid of the leading "g".
-    char *issue_id = strtok(NULL, " ");
-    if (issue_id == NULL) {
+    char *id = strtok(NULL, " ");
+    if (id == NULL) {
       fprintf(stderr, "The 'g' command requires an issue-id after it.\n");
       return;
     }
-    printf("getting issue %s\n", issue_id);
+    printf("getting issue %s\n", id);
+    free(issue_id);
+    issue_id = strdup(id);
+    printf("issue_id is '%s'\nid is '%s'\n", issue_id, id);
 
-    get_issue(issue_id);
+    get_issue();
   } else if (0 == strncmp("d", in, 1)) {
     printf("Description:\n%s\n\n", description);
   } else if (0 == strncmp("s", in, 1)) {
@@ -259,7 +316,6 @@ int main(void) {
   char *creds = config[0];
   subdomain = config[1];
 
-  CURLcode res;
   curl_global_init(CURL_GLOBAL_DEFAULT);
   curl = curl_easy_init();
   if (!curl) {
