@@ -1,46 +1,10 @@
 // gcc -o jira -I/usr/include/x86_64-linux-gnu jira.c -lcurl -ljansson
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <string.h>
+#include <stdlib.h>
 #include <curl/curl.h>
 #include <jansson.h>
 #include <errno.h>
-
-// Growable string.
-// This could be in a seperate library.
-struct growable_string {
-  char *memory;
-  size_t length, capacity;
-};
-void growable_string_new(struct growable_string *out) {
-  size_t capacity = 20481;
-  char *data = malloc(capacity);
-  data[0] = '\0';
-
-  out->memory = data;
-  out->length = 0;
-  out->capacity = capacity;
-}
-
-int growable_string_append(struct growable_string *string, const char *in, size_t new_amount) {
-  if (string->capacity < string->length + new_amount + 1) {
-    // grow string
-    size_t new_cap = (new_amount * 2) + string->capacity;
-    char *new_mem = realloc(string->memory, new_cap);
-    if (new_mem == NULL) {
-      fprintf(stderr, "Couldn't get %lu bytes of memory to grow a string.\n", new_cap);
-      exit(3);
-    }
-    string->memory = new_mem;
-    string->capacity = new_cap;
-  }
-
-  strncat(string->memory, in, new_amount);
-  string->length += new_amount;
-
-  return 1;
-}
 
 CURL *curl;
 char *subdomain;
@@ -86,23 +50,22 @@ void get_config(char** out) {
   out[1] = subdomain;
 }
 
-size_t append_growable_string(void *body, size_t size, size_t num, void *store) {
+size_t append_to_string(void *body, size_t size, size_t num, void *orig) {
   size_t total = size * num;
-  struct growable_string *store1 = store;
+  char* body1 = body;
+  char** total_body_holder = orig;
 
-  if (store1->length + total > store1->capacity) {
-    size_t new_capacity = (total * 2) + store1->capacity;
-    char *new_mem = realloc(store1->memory, new_capacity);
-    if (new_mem == NULL) {
-      fprintf(stderr, "Couldn't get %lu bytes of memory for saving the response.\n", new_capacity);
-      exit(3);
-    }
-    store1->memory = new_mem;
-    store1->capacity = new_capacity;
-  }
+  size_t new_size = total + 1 + strlen(*total_body_holder);
 
-  strcat(store1->memory, body);
-  store1->length += total;
+  /* We are doing a malloc and free here because realloc on *total_body_holder
+     was not copying the old data over, and that would blow out the JSON string
+     we are trying to build. */
+  char* new_string = malloc(new_size);
+  strcpy(new_string, "");
+  strcat(new_string, *total_body_holder);
+  strncat(new_string, body1, total);
+  free(*total_body_holder);
+  *total_body_holder = new_string;
 
   return total;
 }
@@ -154,7 +117,15 @@ char *get_description(char *json) {
   //Description
   json_t *d1 = json_object_get(fields, "description");
   free(description);
-  description = strdup(json_string_value(d1));
+  char* input_description = json_string_value(d1);
+  if (input_description) {
+    // Because JIRA sends over a null instead of an empty string, we have to
+    // switch on the type.  Thanks JIRA.
+    description = strdup(input_description);
+  } else {
+    description = (char*) malloc(5);
+    strcpy(description, "");
+  }
   json_decref(d1);
 
   // Summary
@@ -174,25 +145,25 @@ void get_issue() {
   snprintf(url, 256, "https://%s.atlassian.net/rest/api/latest/issue/%s", subdomain, issue_id);
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_growable_string);
-  struct growable_string response;
-  response.memory = malloc(20480); // 20KB.  Each "g" call usually pulls in 11-12KB.
-  response.memory[0] = '\0'; // Set first char to '\0' so that it's a valid empty string.
-  response.length = 0;
-  response.capacity = 20479;
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_to_string);
+
+  // This probably has to be a pointer to a string because the string itself
+  // will be realloc'd to a bigger string as we get more information from
+  // the internet.  But we can't just change that pointer because the handler
+  // callback cannot change it.  Hence the second-layer of redirection.
+  char* response = (char*)malloc(5);
+  strcpy(response, "");
+  char** response_holder = &response;
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response_holder);
 
   res = curl_easy_perform(curl);
   if(res != CURLE_OK)
     fprintf(stderr, "curl_easy_perform() failed: %s\n",
 	    curl_easy_strerror(res));
 
-  printf("Size of get_issue = %lu bytes\n", response.length);
+  get_description(*response_holder);
 
-  get_description(response.memory);
-
-  free(response.memory);
-  response.capacity = 0;
+  free(*response_holder);
 }
 
 void print_comments() {
@@ -209,17 +180,20 @@ void write_to_file(char *filename, char *body) {
   fclose(f);
 }
 
-void replace_string(struct growable_string *out, const char *in, char *pattern, char *replacement) {
+void replace_string(char *out, const char *in, char *pattern, char *replacement) {
   char *in2 = strdup(in);
   char *p = strtok(in2, pattern);
   if (p == NULL) {
-    growable_string_append(out, in, out->length + strlen(in));
+    realloc(out, strlen(out) + strlen(in) + 1);
+    strcat(out, in);
     return;
   }
 
   do {
-    growable_string_append(out, p, out->length + strlen(p));
-    growable_string_append(out, replacement, out->length + strlen(replacement));
+    realloc(out, 1 + strlen(out) + strlen(p) + strlen(replacement));
+    strcat(out, p);
+    strcat(out, replacement);
+    /* Should we call strtok again over here? */
   } while (p != NULL);
 }
 
@@ -227,8 +201,7 @@ void write_comment() {
   printf("Input your comment and end with 'eof' on a newline.\n");
   char *line = NULL;
   size_t len = 500, ret = 0;
-  struct growable_string string = {};
-  growable_string_new(&string);
+  char* string = "";
 
   while(1) {
     line = malloc(len);
@@ -237,15 +210,15 @@ void write_comment() {
       break;
     }
 
-    growable_string_append(&string, line, ret);
+    realloc(string, 1 + strlen(string) + ret);
+    strcat(string, line);
     free(line);
   }
-  struct growable_string foo;
-  growable_string_new(&foo);
-  replace_string(&foo, string.memory, "\n", "\\n");
-  printf("foo is: %sNNN\n", foo.memory);
-  char body[foo.length + 20];
-  sprintf(body, "{\"body\":\"%s\"}", foo.memory);
+  char* foo;
+  replace_string(foo, string, "\n", "\\n");
+  printf("foo is: %sNNN\n", foo);
+  char body[strlen(foo) + 20];
+  sprintf(body, "{\"body\":\"%s\"}", foo);
   printf("body is: %sNNN\n", body);
   return;
 
@@ -260,14 +233,13 @@ void write_comment() {
   headers = curl_slist_append(headers, "Content-Type:application/json");
   if (headers == NULL) {
     fprintf(stderr, "Couldn't add content-type json when adding a comment");
-    free(string.memory);
+    free(string);
   }
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
 
-  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_growable_string);
-  struct growable_string response;
-  growable_string_new(&response);
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
+  curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_to_string);
+  char* response;
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response);
 
   char errbuf[CURL_ERROR_SIZE];
   curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
@@ -276,9 +248,9 @@ void write_comment() {
   if (res != CURLE_OK) {
     fprintf(stderr, "Could not post comment: %s\n", curl_easy_strerror(res));
   }
-  printf("Response is: %s\n", response.memory);
-
-  free(string.memory);
+  printf("Response is: %s\n", response);
+  free(string);
+  free(response);
 }
 
 void eval_command(char *in) {
