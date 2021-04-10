@@ -13,10 +13,7 @@ char *subdomain;
 char *description, *summary, **g_comments, *issue_id;
 size_t g_comment_length;
 
-char* get_command() {
-  size_t len = 500;
-  char* line = malloc(len);
-
+char* get_command(char* line, size_t len) {
   printf("> ");
   int ret = getline(&line, &len, stdin);
   if (ret == -1) {
@@ -298,9 +295,9 @@ int main(void) {
 
   char* a1;
   while(1) {
-    a1 = get_command();
-    eval_command(a1);
-    free(a1);
+    char a2[500] = "";
+    get_command(&a2, 500);
+    eval_command(a2);
   }
 
   curl_easy_cleanup(curl);
