@@ -181,49 +181,56 @@ void replace_string(char *out, const char *in, char *pattern, char *replacement)
   char *in2 = strdup(in);
   char *p = strtok(in2, pattern);
   if (p == NULL) {
-    void *unchecked = realloc(out, strlen(out) + strlen(in) + 1);
+    out = realloc(out, strlen(out) + strlen(in) + 1);
+    if (!out) {
+      exit(ENOMEM);
+    }
     strcat(out, in);
     return;
   }
 
   do {
-    void* unchecked = realloc(out, 1 + strlen(out) + strlen(p) + strlen(replacement));
+    out = realloc(out, 1 + strlen(out) + strlen(p) + strlen(replacement));
+    if (!out) {
+      exit(ENOMEM);
+    }
     strcat(out, p);
     strcat(out, replacement);
-    /* Should we call strtok again over here? */
+
+    p = strtok(NULL, pattern);
   } while (p != NULL);
 }
 
 void write_comment() {
   printf("Input your comment and end with 'eof' on a newline.\n");
-  char *line = NULL;
   size_t len = 500, ret = 0;
-  char* string = "";
+  char* string = malloc(20); strcpy(string, "");
+  char* line = malloc(20); strcpy(line, "");
 
   while(1) {
-    line = malloc(len);
     ret = getline(&line, &len, stdin);
     if (0 == strncmp("eof", line, 3)) {
       break;
     }
 
-    void* unchecked = realloc(string, 1 + strlen(string) + ret);
+    string = realloc(string, 1 + strlen(string) + ret);
+    if (!string) {
+      exit(ENOMEM);
+    }
     strcat(string, line);
-    free(line);
   }
-  char* foo;
-  replace_string(foo, string, "\n", "\\n");
-  printf("foo is: %sNNN\n", foo);
-  char body[strlen(foo) + 20];
-  sprintf(body, "{\"body\":\"%s\"}", foo);
-  printf("body is: %sNNN\n", body);
+  char* str_with_escaped_newlines = malloc(20); strcpy(str_with_escaped_newlines, "");
+  replace_string(str_with_escaped_newlines, string, "\n", "\\n");
+  char body[strlen(str_with_escaped_newlines) + 20];
+  sprintf(body, "{\"body\":\"%s\"}", str_with_escaped_newlines);
+  free(str_with_escaped_newlines);
   return;
 
   CURLcode res;
   char url[256];
-  printf("in wc, issue-id is '%s'\n", issue_id);
+  printf("in wc, issue-id='%s'\n", issue_id);
   snprintf(url, 256, "https://%s.atlassian.net/rest/api/2/issue/%s/comment", subdomain, issue_id);
-  printf("posting <%s> to %s\n", body, url);
+  printf("posting body=%s to url=%s\n", body, url);
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
   struct curl_slist *headers = NULL;
@@ -241,11 +248,11 @@ void write_comment() {
   char errbuf[CURL_ERROR_SIZE];
   curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
   res = curl_easy_perform(curl);
-  printf("err %s, res = %d\n", errbuf, res);
+  printf("err=%s, res=%d\n", errbuf, res);
   if (res != CURLE_OK) {
     fprintf(stderr, "Could not post comment: %s\n", curl_easy_strerror(res));
   }
-  printf("Response is: %s\n", response);
+  printf("Response=%s\n", response);
   free(string);
   free(response);
 }
@@ -293,10 +300,9 @@ int main(void) {
   }
   curl_easy_setopt(curl, CURLOPT_USERPWD, creds);
 
-  char* a1;
   while(1) {
     char a2[500] = "";
-    get_command(&a2, 500);
+    get_command(&a2[0], 500);
     eval_command(a2);
   }
 
