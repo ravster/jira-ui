@@ -117,7 +117,7 @@ char *get_description(char *json) {
   //Description
   json_t *d1 = json_object_get(fields, "description");
   free(description);
-  char* input_description = json_string_value(d1);
+  char* input_description = (char *)json_string_value(d1);
   if (input_description) {
     // Because JIRA sends over a null instead of an empty string, we have to
     // switch on the type.  Thanks JIRA.
@@ -184,13 +184,13 @@ void replace_string(char *out, const char *in, char *pattern, char *replacement)
   char *in2 = strdup(in);
   char *p = strtok(in2, pattern);
   if (p == NULL) {
-    realloc(out, strlen(out) + strlen(in) + 1);
+    void *unchecked = realloc(out, strlen(out) + strlen(in) + 1);
     strcat(out, in);
     return;
   }
 
   do {
-    realloc(out, 1 + strlen(out) + strlen(p) + strlen(replacement));
+    void* unchecked = realloc(out, 1 + strlen(out) + strlen(p) + strlen(replacement));
     strcat(out, p);
     strcat(out, replacement);
     /* Should we call strtok again over here? */
@@ -210,7 +210,7 @@ void write_comment() {
       break;
     }
 
-    realloc(string, 1 + strlen(string) + ret);
+    void* unchecked = realloc(string, 1 + strlen(string) + ret);
     strcat(string, line);
     free(line);
   }
