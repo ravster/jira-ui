@@ -6,8 +6,7 @@
 #include <jansson.h>
 #include <errno.h>
 
-CURL *curl;
-char *subdomain;
+char *subdomain, *creds;
 
 // Current issue.  Maybe make it a struct?
 char *description, *summary, **g_comments, *issue_id;
@@ -78,8 +77,9 @@ int extract_comments(json_t *fields) {
     return 0;
   }
 
+  // comments0 is an array of [name, body] pairs.
   char **comments0 = malloc(2 * length * sizeof(char *));
-  for (int i = 0; i < length; i = i + 2) {
+  for (int i = 0; i < length; i++) {
     element = json_array_get(comments, i);
     json_t *author = json_object_get(element, "author");
     json_t *display_name = json_object_get(author, "displayName");
@@ -87,8 +87,8 @@ int extract_comments(json_t *fields) {
     json_t *body = json_object_get(element, "body");
     char *body1 = strdup(json_string_value(body));
 
-    comments0[i] = display_name1;
-    comments0[i + 1] = body1;
+    comments0[i * 2] = display_name1;
+    comments0[i*2 + 1] = body1;
   }
   g_comments = comments0;
   g_comment_length = length;
@@ -110,9 +110,17 @@ char *get_description(char *json) {
   }
 
   json_t *fields = json_object_get(root, "fields");
+  if (!fields) {
+    fprintf(stderr, "No fields in root object. json=%s\n", json);
+    return "FAIL on json-parse";
+  }
 
   //Description
   json_t *d1 = json_object_get(fields, "description");
+  if (!fields) {
+    fprintf(stderr, "No description in fields object. json=%s\n", json);
+    return "FAIL on json-parse";
+  }
   free(description);
   char* input_description = (char *)json_string_value(d1);
   if (input_description) {
@@ -137,12 +145,20 @@ char *get_description(char *json) {
 }
 
 void get_issue() {
-  CURLcode res;
+  /*
+  This CURL pointer is static since I want it to persist past the lifetime of this function,
+  because the POST CURL needs to be different from the GET CURL, since they have different
+  options on them.
+  */
+  static CURL *curl;
+  curl = curl_easy_init();
+
   char url[256];
   snprintf(url, 256, "https://%s.atlassian.net/rest/api/latest/issue/%s", subdomain, issue_id);
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_HTTPGET, 1L);
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_to_string);
+  curl_easy_setopt(curl, CURLOPT_USERPWD, creds);
 
   // This probably has to be a pointer to a string because the string itself
   // will be realloc'd to a bigger string as we get more information from
@@ -153,6 +169,8 @@ void get_issue() {
   char** response_holder = &response;
   curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response_holder);
 
+  printf("Making GET request to url=%s\n", url);
+  CURLcode res;
   res = curl_easy_perform(curl);
   if(res != CURLE_OK)
     fprintf(stderr, "curl_easy_perform() failed: %s\n",
@@ -177,7 +195,7 @@ void write_to_file(char *filename, char *body) {
   fclose(f);
 }
 
-void replace_string(char *out, const char *in, char *pattern, char *replacement) {
+char* replace_string(char *out, const char *in, char *pattern, char *replacement) {
   char *in2 = strdup(in);
   char *p = strtok(in2, pattern);
   if (p == NULL) {
@@ -186,7 +204,7 @@ void replace_string(char *out, const char *in, char *pattern, char *replacement)
       exit(ENOMEM);
     }
     strcat(out, in);
-    return;
+    return(out);
   }
 
   do {
@@ -199,6 +217,9 @@ void replace_string(char *out, const char *in, char *pattern, char *replacement)
 
     p = strtok(NULL, pattern);
   } while (p != NULL);
+
+  return(out); // So the caller that made out, can then free the newest out
+  // that 'out' has been realloc'd to.
 }
 
 void write_comment() {
@@ -220,39 +241,48 @@ void write_comment() {
     strcat(string, line);
   }
   char* str_with_escaped_newlines = malloc(20); strcpy(str_with_escaped_newlines, "");
-  replace_string(str_with_escaped_newlines, string, "\n", "\\n");
+  str_with_escaped_newlines = replace_string(str_with_escaped_newlines, string, "\n", "\\n");
   char body[strlen(str_with_escaped_newlines) + 20];
   sprintf(body, "{\"body\":\"%s\"}", str_with_escaped_newlines);
   free(str_with_escaped_newlines);
-  return;
 
-  CURLcode res;
   char url[256];
   printf("in wc, issue-id='%s'\n", issue_id);
   snprintf(url, 256, "https://%s.atlassian.net/rest/api/2/issue/%s/comment", subdomain, issue_id);
   printf("posting body=%s to url=%s\n", body, url);
+
+  /* This CURL pointer is static too, since we don't share the object with the GET requests,
+     and we want to reuse the same object through the life of the program to take advantage of
+     CURLs HTTP keepalive functionality.
+
+     It almost certainly doesn't matter for this program, but it's good practice, and it doesn't
+     harm anything in this program for the very same reason, that this is a very open-and-shut
+     type of program. */
+  static CURL *curl;
+  curl = curl_easy_init();
+  curl_easy_setopt(curl, CURLOPT_USERPWD, creds);
   curl_easy_setopt(curl, CURLOPT_URL, url);
   curl_easy_setopt(curl, CURLOPT_POSTFIELDS, body);
   struct curl_slist *headers = NULL;
-  headers = curl_slist_append(headers, "Content-Type:application/json");
+  headers = curl_slist_append(headers, "Content-Type: application/json");
   if (headers == NULL) {
     fprintf(stderr, "Couldn't add content-type json when adding a comment");
     free(string);
   }
   curl_easy_setopt(curl, CURLOPT_HTTPHEADER, headers);
-
   curl_easy_setopt(curl, CURLOPT_WRITEFUNCTION, append_to_string);
   char* response;
-  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)response);
-
+  curl_easy_setopt(curl, CURLOPT_WRITEDATA, (void *)&response);
   char errbuf[CURL_ERROR_SIZE];
   curl_easy_setopt(curl, CURLOPT_ERRORBUFFER, errbuf);
+  CURLcode res;
   res = curl_easy_perform(curl);
   printf("err=%s, res=%d\n", errbuf, res);
   if (res != CURLE_OK) {
     fprintf(stderr, "Could not post comment: %s\n", curl_easy_strerror(res));
   }
   printf("Response=%s\n", response);
+  curl_slist_free_all(headers);
   free(string);
   free(response);
 }
@@ -289,16 +319,10 @@ void eval_command(char *in) {
 int main(void) {
   char **config = malloc(sizeof(char*) * 2);
   get_config(config);
-  char *creds = config[0];
+  creds = strdup(config[0]);
   subdomain = config[1];
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
-  curl = curl_easy_init();
-  if (!curl) {
-    fprintf(stderr, "Couldn't create a CURL instance\n");
-    exit(2);
-  }
-  curl_easy_setopt(curl, CURLOPT_USERPWD, creds);
 
   while(1) {
     char a2[500] = "";
@@ -306,7 +330,6 @@ int main(void) {
     eval_command(a2);
   }
 
-  curl_easy_cleanup(curl);
   curl_global_cleanup();
   free(creds);
 
