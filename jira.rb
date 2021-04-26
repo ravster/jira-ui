@@ -34,6 +34,29 @@ def comments
   end
 end
 
+def make_comment
+  puts "Write your comment and end it with a '.' on it's own line."
+  lines = ""
+  loop do
+    line = gets
+    if line.chomp == '.'
+      break
+    end
+    lines << line
+  end
+
+  uri = URI("https://#{$subdomain}.atlassian.net/rest/api/latest/issue/#{$current_issue[:id]}/comment")
+  req = Net::HTTP::Post.new(uri, 'Content-Type' => 'application/json')
+  req.body = {body: lines}.to_json
+  req.basic_auth(*$basic_auth.split(":"))
+  res = Net::HTTP.start(uri.hostname, uri.port, {use_ssl: true}) do |http|
+    http.request(req)
+  end
+
+  p res # Prints 201 when happy
+  p res.body # Giant JSON, 'cause JIRA
+end
+
 def eval_command(input)
   command = input.strip!
   case
@@ -45,6 +68,8 @@ def eval_command(input)
     summary
   when command.start_with?("c")
     comments
+  when command == "mc"
+    make_comment
   else
     puts "Didn't understand that command.  RTFM."
   end
