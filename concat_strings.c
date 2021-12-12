@@ -32,6 +32,39 @@ char* str_join(int count, char** input, char* sep) {
   return(out);
 }
 
+char* str_mult(int count, char* in) {
+  char* out = calloc((count+1)*strlen(in), sizeof(char));
+  out[0] = 0; // Ensure the first byte is a \0, so it's a well-behaved string.
+
+  for(int i = 0; i<count; i++) {
+    strcat(out, in);
+  }
+  return(out);
+}
+
+char* str_center(char* input, int width, char* pad) {
+  int len1 = strlen(input);
+  int extra = width - len1;
+  int half = extra/2;
+  if ((len1 >= width) || (half < 1)) {
+    char* out = strdup(input);
+    return out;
+  }
+
+  char * pad2 = str_mult(half, pad);
+  char* pad3 = strndup(pad2, half);
+  free(pad2);
+  char* arr[3] = {
+    pad3,
+    input,
+    pad3
+  };
+  char* out = merge(3, arr);
+  free(pad3);
+
+  return(out);
+}
+
 int main() {
   int count = 5;
   char* arr[] = {"a", "b", "c", "d", "e"};
@@ -41,5 +74,13 @@ int main() {
   printf("d=%s\n", d);
   free(c);
   free(d);
+
+  char* mult = str_mult(77, "foo");
+  printf("mult=%s\n", mult);
+  free(mult);
+
+  char* center = str_center("foo", 20, ",");
+  printf("center='%s'\n", center);
+  free(center);
   return 0;
 }
