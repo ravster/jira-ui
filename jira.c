@@ -14,12 +14,7 @@ size_t g_comment_length;
 
 char* get_command(char* line, size_t len) {
   printf("> ");
-  int ret = getline(&line, &len, stdin);
-  if (ret == -1) {
-    printf("GOT return value %d.  errno = %d. %s.\n", ret, errno, line);
-    perror("Can't read from stdin! wat?\n");
-    exit(errno);
-  }
+  getline(&line, &len, stdin);
   return line;
 }
 
