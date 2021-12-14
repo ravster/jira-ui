@@ -11,6 +11,7 @@ char *subdomain, *creds;
 // Current issue.  Maybe make it a struct?
 char *description, *summary, **g_comments, *issue_id;
 size_t g_comment_length;
+int in_loop = 1;
 
 char* get_command(char* line, size_t len) {
   printf("> ");
@@ -282,6 +283,10 @@ void write_comment() {
   free(response);
 }
 
+void exit_loop() {
+  in_loop = 0;
+}
+
 void eval_command(char *in) {
   if (0 == strncmp("g ", in, 2)) {
     // If first 2 chars are "g ".
@@ -306,6 +311,8 @@ void eval_command(char *in) {
     print_comments();
   } else if (0 == strncmp("mc", in, 2)) {
     write_comment();
+  } else if (0 == strncmp("q", in, 1)) {
+    exit_loop();
   } else {
     printf("Didn't understand command:%s:\n", in);
   }
@@ -319,7 +326,7 @@ int main(void) {
 
   curl_global_init(CURL_GLOBAL_DEFAULT);
 
-  while(1) {
+  while(in_loop == 1) {
     char a2[500] = "";
     get_command(&a2[0], 500);
     eval_command(a2);
@@ -327,6 +334,7 @@ int main(void) {
 
   curl_global_cleanup();
   free(creds);
+  printf("Exiting...\n");
 
   return 0;
 }
