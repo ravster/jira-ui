@@ -65,6 +65,25 @@ char* str_center(char* input, int width, char* pad) {
   return(out);
 }
 
+// Returns a NULL terminated list of strings.
+char** str_split(const char* in, const char* delim) {
+  char** out = calloc(100, sizeof(char*));
+  char* in2 = strdup(in);
+  int count = 0;
+
+  char* el = strtok(in2, delim);
+  while(el != NULL) {
+    printf("Count is %d\n", count);
+    out[count] = strdup(el);
+    count++;
+    el = strtok(NULL, delim);
+  }
+  free(in2);
+  out[count] = NULL;
+
+  return out;
+}
+
 int main() {
   int count = 5;
   char* arr[] = {"a", "b", "c", "d", "e"};
@@ -82,5 +101,17 @@ int main() {
   char* center = str_center("foo", 20, ",");
   printf("center='%s'\n", center);
   free(center);
+
+  char** split = str_split("foo,bar,baz,qux", ",");
+  printf("split=\n");
+  for(int i = 0; i < 100; i++) {
+    char* el = split[i];
+    if (el == NULL) {
+      break;
+    }
+    printf("  %s\n", el);
+    free(el);
+  }
+  free(split);
   return 0;
 }
