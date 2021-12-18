@@ -4,6 +4,7 @@
 #include <string.h>
 #include <stdlib.h>
 
+// Ruby String#+
 char* merge(int count, char** arr) {
   char* new = calloc(5000, sizeof(char));
   strcat(new, "");
@@ -84,6 +85,15 @@ char** str_split(const char* in, const char* delim) {
   return out;
 }
 
+// Ruby String#<<
+char* str_append(char* in1, char* in2) {
+  int outlen = strlen(in1) + strlen(in2) + 1;
+  char* out = calloc(outlen, sizeof(char));
+  strcat(out, in1);
+  strcat(out, in2);
+  return out;
+}
+
 int main() {
   int count = 5;
   char* arr[] = {"a", "b", "c", "d", "e"};
@@ -113,5 +123,10 @@ int main() {
     free(el);
   }
   free(split);
+
+  char* append = str_append("foo", " bar");
+  printf("append='%s'\n", append);
+  free(append);
+
   return 0;
 }
