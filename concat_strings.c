@@ -94,6 +94,37 @@ char* str_append(char* in1, char* in2) {
   return out;
 }
 
+typedef struct {
+  int capacity;
+  int length;
+  char* string;
+} r_string;
+r_string* r_string_append(r_string* out, const char* in) {
+  int inlen = strlen(in);
+  int newlen = 1 + out->length + inlen;
+  if (newlen > out->capacity) {
+    out->string = realloc(out->string, newlen * 3);
+    // 3 is magic num.  Pulled out of thin air.
+    out->capacity = newlen * 3;
+  }
+  strcat(out->string, in);
+  out->length = newlen;
+  return out;
+}
+r_string* r_string_new(const char* in) {
+  r_string* out = malloc(sizeof(r_string));
+  out->capacity = 500; // magic num
+  out->length = 0;
+  out->string = calloc(out->capacity, sizeof(char));
+  out->string[0] = 0;
+
+  return r_string_append(out, in);
+}
+void r_string_free(r_string* it) {
+  free(it->string);
+  free(it);
+}
+
 int main() {
   int count = 5;
   char* arr[] = {"a", "b", "c", "d", "e"};
@@ -127,6 +158,19 @@ int main() {
   char* append = str_append("foo", " bar");
   printf("append='%s'\n", append);
   free(append);
+
+  char* arr2[] = {"foo", "bar", "baz", "qux", 0};
+  r_string* lis = r_string_new("");
+  char* foo = calloc(30, sizeof(char)); foo[0] = 0;
+  for(int i = 0; ; i++) { // magic num
+    char* el = arr2[i];
+    if (el == 0) { break; }
+    sprintf(foo, "<li>%s</li>\n", el);
+    r_string_append(lis, foo);
+  }
+  free(foo);
+  printf("<ul>\n%s</ul>", lis->string);
+  r_string_free(lis);
 
   return 0;
 }
